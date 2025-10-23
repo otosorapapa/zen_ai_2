@@ -1,0 +1,89 @@
+name: Deploy WordPress Plugin
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      NODE_VERSION: '20'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies and build
+        env:
+          VITE_BASE_PATH: ./
+        run: |
+          npm ci
+          npm run build
+
+      - name: Guard dist output
+        run: |
+          test -f dist/index.html || (echo "dist/index.html not found" && exit 1)
+          test -f dist/manifest.json || (echo "dist/manifest.json not found" && exit 1)
+
+      - name: Assemble WordPress plugin bundle
+        run: |
+          rm -rf wordpress-plugin
+          mkdir -p wordpress-plugin
+          cp -R deliverables/wp-plugin/. wordpress-plugin/
+          rsync -av --delete dist/ wordpress-plugin/dist/
+
+      - name: Install sshpass
+        run: sudo apt-get update -y && sudo apt-get install -y sshpass
+
+      - name: Prepare remote directory
+        env:
+          WP_HOST: ${{ secrets.WP_HOST }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_SSH_PASS: ${{ secrets.WP_SSH_PASS }}
+          WP_REMOTE_PATH: ${{ secrets.WP_REMOTE_PATH }}
+          WP_SSH_PORT: ${{ secrets.WP_SSH_PORT || '22' }}
+        run: |
+          PASS_CLEAN=$(printf '%s' "$WP_SSH_PASS" | tr -d '\r\n')
+          sshpass -p "$PASS_CLEAN" ssh -p "$WP_SSH_PORT" -o StrictHostKeyChecking=no "$WP_USER@$WP_HOST" "
+            mkdir -p $WP_REMOTE_PATH &&
+            chmod 755 $WP_REMOTE_PATH
+          "
+
+      - name: Rsync deploy
+        env:
+          WP_HOST: ${{ secrets.WP_HOST }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_SSH_PASS: ${{ secrets.WP_SSH_PASS }}
+          WP_REMOTE_PATH: ${{ secrets.WP_REMOTE_PATH }}
+          WP_SSH_PORT: ${{ secrets.WP_SSH_PORT || '22' }}
+        run: |
+          PASS_CLEAN=$(printf '%s' "$WP_SSH_PASS" | tr -d '\r\n')
+          sshpass -p "$PASS_CLEAN" rsync -avz --delete \
+            -e "ssh -p $WP_SSH_PORT -o StrictHostKeyChecking=no" \
+            wordpress-plugin/ "$WP_USER@$WP_HOST:$WP_REMOTE_PATH/"
+
+      - name: Show remote listing
+        env:
+          WP_HOST: ${{ secrets.WP_HOST }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_SSH_PASS: ${{ secrets.WP_SSH_PASS }}
+          WP_REMOTE_PATH: ${{ secrets.WP_REMOTE_PATH }}
+          WP_SSH_PORT: ${{ secrets.WP_SSH_PORT || '22' }}
+        run: |
+          PASS_CLEAN=$(printf '%s' "$WP_SSH_PASS" | tr -d '\r\n')
+          sshpass -p "$PASS_CLEAN" ssh -p "$WP_SSH_PORT" -o StrictHostKeyChecking=no "$WP_USER@$WP_HOST" "
+            ls -la $WP_REMOTE_PATH &&
+            echo '== dist ==' &&
+            ls -la $WP_REMOTE_PATH/dist || true &&
+            echo '== assets ==' &&
+            ls -la $WP_REMOTE_PATH/dist/assets || true
+          "
