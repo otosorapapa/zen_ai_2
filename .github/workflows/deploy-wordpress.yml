@@ -37,9 +37,9 @@ jobs:
       - name: Assemble WordPress plugin bundle
         run: |
           rm -rf wordpress-plugin
-          mkdir -p wordpress-plugin
-          cp -R deliverables/wp-plugin/. wordpress-plugin/
-          rsync -av --delete dist/ wordpress-plugin/dist/
+          mkdir -p wordpress-plugin/ai-lp-embed
+          cp -R deliverables/wp-plugin/ai-lp-embed/. wordpress-plugin/ai-lp-embed/
+          rsync -av --delete dist/ wordpress-plugin/ai-lp-embed/dist/
 
       - name: Install sshpass
         run: sudo apt-get update -y && sudo apt-get install -y sshpass
@@ -52,14 +52,46 @@ jobs:
           WP_REMOTE_PATH: ${{ secrets.WP_REMOTE_PATH }}
           WP_SSH_PORT: ${{ secrets.WP_SSH_PORT || '22' }}
         run: |
-          PASS_CLEAN=$(printf '%s' "$WP_SSH_PASS" | tr -d '\r\n')
-          HOST_CLEAN=$(printf '%s' "$WP_HOST" | tr -d '\r\n')
-          USER_CLEAN=$(printf '%s' "$WP_USER" | tr -d '\r\n')
-          PORT_CLEAN=$(printf '%s' "$WP_SSH_PORT" | tr -d '\r\n')
-          REMOTE_PATH_CLEAN=$(printf '%s' "$WP_REMOTE_PATH" | tr -d '\r\n')
+          set -euo pipefail
+
+          sanitize() {
+            local value="$1"
+            value=${value//$'\r'/}
+            value=${value//$'\n'/}
+            value="${value#${value%%[![:space:]]*}}"
+            value="${value%${value##*[![:space:]]}}"
+            printf '%s' "$value"
+          }
+
+          PASS_CLEAN=$(sanitize "${WP_SSH_PASS-}")
+          HOST_CLEAN=$(sanitize "${WP_HOST-}")
+          USER_CLEAN=$(sanitize "${WP_USER-}")
+          PORT_CLEAN=$(sanitize "${WP_SSH_PORT-}")
+          REMOTE_PATH_CLEAN=$(sanitize "${WP_REMOTE_PATH-}")
+          if [[ -z "$PORT_CLEAN" ]]; then
+            PORT_CLEAN=22
+          fi
+
+          PLUGIN_SLUG="ai-lp-embed"
+          REMOTE_BASE="${REMOTE_PATH_CLEAN%/}"
+          if [[ -z "$REMOTE_BASE" ]]; then
+            echo "WP_REMOTE_PATH is empty after sanitization" >&2
+            exit 1
+          fi
+
+          if [[ "$REMOTE_BASE" == */$PLUGIN_SLUG ]]; then
+            REMOTE_PLUGIN_DIR="$REMOTE_BASE"
+          elif [[ "$REMOTE_BASE" == "$PLUGIN_SLUG" ]]; then
+            REMOTE_PLUGIN_DIR="$PLUGIN_SLUG"
+          else
+            REMOTE_PLUGIN_DIR="$REMOTE_BASE/$PLUGIN_SLUG"
+          fi
+
+          echo "Preparing remote plugin directory: $REMOTE_PLUGIN_DIR"
+
           sshpass -p "$PASS_CLEAN" ssh -p "$PORT_CLEAN" -o StrictHostKeyChecking=no "$USER_CLEAN@$HOST_CLEAN" "
-            mkdir -p $REMOTE_PATH_CLEAN &&
-            chmod 755 $REMOTE_PATH_CLEAN
+            mkdir -p \"$REMOTE_PLUGIN_DIR\" &&
+            chmod 755 \"$REMOTE_PLUGIN_DIR\"
           "
 
       - name: Rsync deploy
@@ -70,14 +102,44 @@ jobs:
           WP_REMOTE_PATH: ${{ secrets.WP_REMOTE_PATH }}
           WP_SSH_PORT: ${{ secrets.WP_SSH_PORT || '22' }}
         run: |
-          PASS_CLEAN=$(printf '%s' "$WP_SSH_PASS" | tr -d '\r\n')
-          HOST_CLEAN=$(printf '%s' "$WP_HOST" | tr -d '\r\n')
-          USER_CLEAN=$(printf '%s' "$WP_USER" | tr -d '\r\n')
-          PORT_CLEAN=$(printf '%s' "$WP_SSH_PORT" | tr -d '\r\n')
-          REMOTE_PATH_CLEAN=$(printf '%s' "$WP_REMOTE_PATH" | tr -d '\r\n')
+          set -euo pipefail
+
+          sanitize() {
+            local value="$1"
+            value=${value//$'\r'/}
+            value=${value//$'\n'/}
+            value="${value#${value%%[![:space:]]*}}"
+            value="${value%${value##*[![:space:]]}}"
+            printf '%s' "$value"
+          }
+
+          PASS_CLEAN=$(sanitize "${WP_SSH_PASS-}")
+          HOST_CLEAN=$(sanitize "${WP_HOST-}")
+          USER_CLEAN=$(sanitize "${WP_USER-}")
+          PORT_CLEAN=$(sanitize "${WP_SSH_PORT-}")
+          REMOTE_PATH_CLEAN=$(sanitize "${WP_REMOTE_PATH-}")
+          if [[ -z "$PORT_CLEAN" ]]; then
+            PORT_CLEAN=22
+          fi
+
+          PLUGIN_SLUG="ai-lp-embed"
+          REMOTE_BASE="${REMOTE_PATH_CLEAN%/}"
+          if [[ -z "$REMOTE_BASE" ]]; then
+            echo "WP_REMOTE_PATH is empty after sanitization" >&2
+            exit 1
+          fi
+
+          if [[ "$REMOTE_BASE" == */$PLUGIN_SLUG ]]; then
+            REMOTE_PLUGIN_DIR="$REMOTE_BASE"
+          elif [[ "$REMOTE_BASE" == "$PLUGIN_SLUG" ]]; then
+            REMOTE_PLUGIN_DIR="$PLUGIN_SLUG"
+          else
+            REMOTE_PLUGIN_DIR="$REMOTE_BASE/$PLUGIN_SLUG"
+          fi
+
           sshpass -p "$PASS_CLEAN" rsync -avz --delete \
             -e "ssh -p $PORT_CLEAN -o StrictHostKeyChecking=no" \
-            wordpress-plugin/ "$USER_CLEAN@$HOST_CLEAN:$REMOTE_PATH_CLEAN/"
+            "wordpress-plugin/$PLUGIN_SLUG/" "$USER_CLEAN@$HOST_CLEAN:$REMOTE_PLUGIN_DIR/"
 
       - name: Show remote listing
         env:
@@ -87,15 +149,45 @@ jobs:
           WP_REMOTE_PATH: ${{ secrets.WP_REMOTE_PATH }}
           WP_SSH_PORT: ${{ secrets.WP_SSH_PORT || '22' }}
         run: |
-          PASS_CLEAN=$(printf '%s' "$WP_SSH_PASS" | tr -d '\r\n')
-          HOST_CLEAN=$(printf '%s' "$WP_HOST" | tr -d '\r\n')
-          USER_CLEAN=$(printf '%s' "$WP_USER" | tr -d '\r\n')
-          PORT_CLEAN=$(printf '%s' "$WP_SSH_PORT" | tr -d '\r\n')
-          REMOTE_PATH_CLEAN=$(printf '%s' "$WP_REMOTE_PATH" | tr -d '\r\n')
+          set -euo pipefail
+
+          sanitize() {
+            local value="$1"
+            value=${value//$'\r'/}
+            value=${value//$'\n'/}
+            value="${value#${value%%[![:space:]]*}}"
+            value="${value%${value##*[![:space:]]}}"
+            printf '%s' "$value"
+          }
+
+          PASS_CLEAN=$(sanitize "${WP_SSH_PASS-}")
+          HOST_CLEAN=$(sanitize "${WP_HOST-}")
+          USER_CLEAN=$(sanitize "${WP_USER-}")
+          PORT_CLEAN=$(sanitize "${WP_SSH_PORT-}")
+          REMOTE_PATH_CLEAN=$(sanitize "${WP_REMOTE_PATH-}")
+          if [[ -z "$PORT_CLEAN" ]]; then
+            PORT_CLEAN=22
+          fi
+
+          PLUGIN_SLUG="ai-lp-embed"
+          REMOTE_BASE="${REMOTE_PATH_CLEAN%/}"
+          if [[ -z "$REMOTE_BASE" ]]; then
+            echo "WP_REMOTE_PATH is empty after sanitization" >&2
+            exit 1
+          fi
+
+          if [[ "$REMOTE_BASE" == */$PLUGIN_SLUG ]]; then
+            REMOTE_PLUGIN_DIR="$REMOTE_BASE"
+          elif [[ "$REMOTE_BASE" == "$PLUGIN_SLUG" ]]; then
+            REMOTE_PLUGIN_DIR="$PLUGIN_SLUG"
+          else
+            REMOTE_PLUGIN_DIR="$REMOTE_BASE/$PLUGIN_SLUG"
+          fi
+
           sshpass -p "$PASS_CLEAN" ssh -p "$PORT_CLEAN" -o StrictHostKeyChecking=no "$USER_CLEAN@$HOST_CLEAN" "
-            ls -la $REMOTE_PATH_CLEAN &&
+            ls -la \"$REMOTE_PLUGIN_DIR\" &&
             echo '== dist ==' &&
-            ls -la $REMOTE_PATH_CLEAN/dist || true &&
+            ls -la \"$REMOTE_PLUGIN_DIR/dist\" || true &&
             echo '== assets ==' &&
-            ls -la $REMOTE_PATH_CLEAN/dist/assets || true
+            ls -la \"$REMOTE_PLUGIN_DIR/dist/assets\" || true
           "
