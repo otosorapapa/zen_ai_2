@@ -58,8 +58,8 @@ jobs:
           PORT_CLEAN=$(printf '%s' "$WP_SSH_PORT" | tr -d '\r\n')
           REMOTE_PATH_CLEAN=$(printf '%s' "$WP_REMOTE_PATH" | tr -d '\r\n')
           sshpass -p "$PASS_CLEAN" ssh -p "$PORT_CLEAN" -o StrictHostKeyChecking=no "$USER_CLEAN@$HOST_CLEAN" "
-            mkdir -p $REMOTE_PATH_CLEAN &&
-            chmod 755 $REMOTE_PATH_CLEAN
+            mkdir -p \"$REMOTE_PATH_CLEAN\" &&
+            chmod 755 \"$REMOTE_PATH_CLEAN\"
           "
 
       - name: Rsync deploy
@@ -93,9 +93,9 @@ jobs:
           PORT_CLEAN=$(printf '%s' "$WP_SSH_PORT" | tr -d '\r\n')
           REMOTE_PATH_CLEAN=$(printf '%s' "$WP_REMOTE_PATH" | tr -d '\r\n')
           sshpass -p "$PASS_CLEAN" ssh -p "$PORT_CLEAN" -o StrictHostKeyChecking=no "$USER_CLEAN@$HOST_CLEAN" "
-            ls -la $REMOTE_PATH_CLEAN &&
+            ls -la \"$REMOTE_PATH_CLEAN\" &&
             echo '== dist ==' &&
-            ls -la $REMOTE_PATH_CLEAN/dist || true &&
+            ls -la \"$REMOTE_PATH_CLEAN/dist\" || true &&
             echo '== assets ==' &&
-            ls -la $REMOTE_PATH_CLEAN/dist/assets || true
+            ls -la \"$REMOTE_PATH_CLEAN/dist/assets\" || true
           "
