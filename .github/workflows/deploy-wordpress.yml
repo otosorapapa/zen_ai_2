@@ -53,9 +53,13 @@ jobs:
           WP_SSH_PORT: ${{ secrets.WP_SSH_PORT || '22' }}
         run: |
           PASS_CLEAN=$(printf '%s' "$WP_SSH_PASS" | tr -d '\r\n')
-          sshpass -p "$PASS_CLEAN" ssh -p "$WP_SSH_PORT" -o StrictHostKeyChecking=no "$WP_USER@$WP_HOST" "
-            mkdir -p $WP_REMOTE_PATH &&
-            chmod 755 $WP_REMOTE_PATH
+          HOST_CLEAN=$(printf '%s' "$WP_HOST" | tr -d '\r\n')
+          USER_CLEAN=$(printf '%s' "$WP_USER" | tr -d '\r\n')
+          PORT_CLEAN=$(printf '%s' "$WP_SSH_PORT" | tr -d '\r\n')
+          REMOTE_PATH_CLEAN=$(printf '%s' "$WP_REMOTE_PATH" | tr -d '\r\n')
+          sshpass -p "$PASS_CLEAN" ssh -p "$PORT_CLEAN" -o StrictHostKeyChecking=no "$USER_CLEAN@$HOST_CLEAN" "
+            mkdir -p $REMOTE_PATH_CLEAN &&
+            chmod 755 $REMOTE_PATH_CLEAN
           "
 
       - name: Rsync deploy
@@ -67,9 +71,13 @@ jobs:
           WP_SSH_PORT: ${{ secrets.WP_SSH_PORT || '22' }}
         run: |
           PASS_CLEAN=$(printf '%s' "$WP_SSH_PASS" | tr -d '\r\n')
+          HOST_CLEAN=$(printf '%s' "$WP_HOST" | tr -d '\r\n')
+          USER_CLEAN=$(printf '%s' "$WP_USER" | tr -d '\r\n')
+          PORT_CLEAN=$(printf '%s' "$WP_SSH_PORT" | tr -d '\r\n')
+          REMOTE_PATH_CLEAN=$(printf '%s' "$WP_REMOTE_PATH" | tr -d '\r\n')
           sshpass -p "$PASS_CLEAN" rsync -avz --delete \
-            -e "ssh -p $WP_SSH_PORT -o StrictHostKeyChecking=no" \
-            wordpress-plugin/ "$WP_USER@$WP_HOST:$WP_REMOTE_PATH/"
+            -e "ssh -p $PORT_CLEAN -o StrictHostKeyChecking=no" \
+            wordpress-plugin/ "$USER_CLEAN@$HOST_CLEAN:$REMOTE_PATH_CLEAN/"
 
       - name: Show remote listing
         env:
@@ -80,10 +88,14 @@ jobs:
           WP_SSH_PORT: ${{ secrets.WP_SSH_PORT || '22' }}
         run: |
           PASS_CLEAN=$(printf '%s' "$WP_SSH_PASS" | tr -d '\r\n')
-          sshpass -p "$PASS_CLEAN" ssh -p "$WP_SSH_PORT" -o StrictHostKeyChecking=no "$WP_USER@$WP_HOST" "
-            ls -la $WP_REMOTE_PATH &&
+          HOST_CLEAN=$(printf '%s' "$WP_HOST" | tr -d '\r\n')
+          USER_CLEAN=$(printf '%s' "$WP_USER" | tr -d '\r\n')
+          PORT_CLEAN=$(printf '%s' "$WP_SSH_PORT" | tr -d '\r\n')
+          REMOTE_PATH_CLEAN=$(printf '%s' "$WP_REMOTE_PATH" | tr -d '\r\n')
+          sshpass -p "$PASS_CLEAN" ssh -p "$PORT_CLEAN" -o StrictHostKeyChecking=no "$USER_CLEAN@$HOST_CLEAN" "
+            ls -la $REMOTE_PATH_CLEAN &&
             echo '== dist ==' &&
-            ls -la $WP_REMOTE_PATH/dist || true &&
+            ls -la $REMOTE_PATH_CLEAN/dist || true &&
             echo '== assets ==' &&
-            ls -la $WP_REMOTE_PATH/dist/assets || true
+            ls -la $REMOTE_PATH_CLEAN/dist/assets || true
           "
