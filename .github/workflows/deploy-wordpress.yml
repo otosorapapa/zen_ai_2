@@ -53,28 +53,11 @@ jobs:
           WP_SSH_PORT: ${{ secrets.WP_SSH_PORT || '22' }}
         run: |
           sanitize_basic() {
-            KEY="$1" python3 - <<'PY'
-import os
-
-key = os.environ["KEY"]
-value = os.environ.get(key, "")
-value = value.replace("\r", "").replace("\n", "").strip()
-print(value, end="")
-PY
+            KEY="$1" python3 -c "import os; key = os.environ['KEY']; value = os.environ.get(key, ''); value = value.replace('\\r', '').replace('\\n', '').strip(); print(value, end='')"
           }
 
           sanitize_path() {
-            KEY="$1" python3 - <<'PY'
-import os
-import re
-
-key = os.environ["KEY"]
-value = os.environ.get(key, "")
-value = value.replace("\r", "").replace("\n", "").strip()
-value = re.sub(r"/\s+", "/", value)
-value = re.sub(r"\s+/", "/", value)
-print(value, end="")
-PY
+            KEY="$1" python3 -c "import os, re; key = os.environ['KEY']; value = os.environ.get(key, ''); value = value.replace('\\r', '').replace('\\n', '').strip(); value = re.sub(r'/\\s+', '/', value); value = re.sub(r'\\s+/', '/', value); print(value, end='')"
           }
 
           echo "HOST_CLEAN=$(sanitize_basic WP_HOST)" >> "$GITHUB_ENV"
