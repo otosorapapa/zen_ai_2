@@ -73,53 +73,7 @@ jobs:
           echo "PORT_CLEAN=$PORT_CLEAN" >> "$GITHUB_ENV"
           echo "REMOTE_PATH_CLEAN=$REMOTE_PATH_CLEAN" >> "$GITHUB_ENV"
 
-          REMOTE_PLUGIN_PATH=$(PLUGIN_SLUG="$PLUGIN_SLUG" python3 - <<'PY'
-import os
-
-slug = os.environ.get("PLUGIN_SLUG", "").strip()
-remote_path = os.environ.get("REMOTE_PATH_CLEAN", "")
-
-normalized = remote_path.replace("\\", "/")
-
-if ":/" not in normalized and normalized.startswith("//"):
-    normalized = "/" + normalized.lstrip("/")
-
-prefix = ""
-trimmed = normalized
-if normalized.startswith("/"):
-    prefix = "/"
-    trimmed = normalized[1:]
-elif len(normalized) >= 2 and normalized[1] == ":":
-    prefix = normalized[:2]
-    trimmed = normalized[2:]
-
-segments = [segment for segment in trimmed.split("/") if segment]
-
-if segments and segments[-1] == slug:
-    segments = segments[:-1]
-
-def ensure_plugin_base(parts):
-    if len(parts) >= 2 and parts[-2:] == ["wp-content", "plugins"]:
-        return parts
-    if parts and parts[-1] == "plugins":
-        return parts
-    if parts and parts[-1] == "wp-content":
-        return parts + ["plugins"]
-    return parts + ["wp-content", "plugins"]
-
-base_segments = ensure_plugin_base(segments)
-full_segments = base_segments + ([slug] if slug else [])
-
-result = "/".join(full_segments)
-
-if prefix == "/":
-    result = "/" + result
-elif prefix:
-    result = prefix + "/" + result
-
-print(result, end="")
-PY
-          )
+          REMOTE_PLUGIN_PATH=$(PLUGIN_SLUG="$PLUGIN_SLUG" python3 -c $'import os\nslug = os.environ.get("PLUGIN_SLUG", "").strip()\nremote_path = os.environ.get("REMOTE_PATH_CLEAN", "")\nnormalized = remote_path.replace("\\\\", "/")\nif ":/" not in normalized and normalized.startswith("//"):\n    normalized = "/" + normalized.lstrip("/")\nprefix = ""\ntrimmed = normalized\nif normalized.startswith("/"):\n    prefix = "/"\n    trimmed = normalized[1:]\nelif len(normalized) >= 2 and normalized[1] == ":":\n    prefix = normalized[:2]\n    trimmed = normalized[2:]\nsegments = [segment for segment in trimmed.split("/") if segment]\nif segments and segments[-1] == slug:\n    segments = segments[:-1]\nif len(segments) >= 2 and segments[-2:] == ["wp-content", "plugins"]:\n    base_segments = segments\nelif segments and segments[-1] == "plugins":\n    base_segments = segments\nelif segments and segments[-1] == "wp-content":\n    base_segments = segments + ["plugins"]\nelse:\n    base_segments = segments + ["wp-content", "plugins"]\nfull_segments = base_segments + ([slug] if slug else [])\nresult = "/".join(full_segments)\nif prefix == "/":\n    result = "/" + result\nelif prefix:\n    result = prefix + "/" + result\nprint(result, end="")')
 
           echo "REMOTE_PLUGIN_PATH=$REMOTE_PLUGIN_PATH" >> "$GITHUB_ENV"
           echo "RSYNC_SOURCE_DIR=wordpress-plugin/$PLUGIN_SLUG/" >> "$GITHUB_ENV"
