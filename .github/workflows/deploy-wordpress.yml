@@ -12,6 +12,7 @@ jobs:
 
     env:
       NODE_VERSION: '20'
+      PLUGIN_SLUG: ai-lp-embed
 
     steps:
       - name: Checkout repository
@@ -37,9 +38,9 @@ jobs:
       - name: Assemble WordPress plugin bundle
         run: |
           rm -rf wordpress-plugin
-          mkdir -p wordpress-plugin/ai-lp-embed
-          cp -R deliverables/wp-plugin/ai-lp-embed/. wordpress-plugin/ai-lp-embed/
-          rsync -av --delete dist/ wordpress-plugin/ai-lp-embed/dist/
+          mkdir -p "wordpress-plugin/$PLUGIN_SLUG"
+          cp -R "deliverables/wp-plugin/$PLUGIN_SLUG/." "wordpress-plugin/$PLUGIN_SLUG/"
+          rsync -av --delete dist/ "wordpress-plugin/$PLUGIN_SLUG/dist/"
 
       - name: Install sshpass
         run: sudo apt-get update -y && sudo apt-get install -y sshpass
@@ -60,32 +61,47 @@ jobs:
             KEY="$1" python3 -c "import os, re; key = os.environ['KEY']; value = os.environ.get(key, ''); value = value.replace('\\r', '').replace('\\n', '').strip(); value = re.sub(r'/\\s+', '/', value); value = re.sub(r'\\s+/', '/', value); print(value, end='')"
           }
 
-          echo "HOST_CLEAN=$(sanitize_basic WP_HOST)" >> "$GITHUB_ENV"
-          echo "USER_CLEAN=$(sanitize_basic WP_USER)" >> "$GITHUB_ENV"
-          echo "PASS_CLEAN=$(sanitize_basic WP_SSH_PASS)" >> "$GITHUB_ENV"
-          echo "PORT_CLEAN=$(sanitize_basic WP_SSH_PORT)" >> "$GITHUB_ENV"
-          echo "REMOTE_PATH_CLEAN=$(sanitize_path WP_REMOTE_PATH)" >> "$GITHUB_ENV"
+          HOST_CLEAN="$(sanitize_basic WP_HOST)"
+          USER_CLEAN="$(sanitize_basic WP_USER)"
+          PASS_CLEAN="$(sanitize_basic WP_SSH_PASS)"
+          PORT_CLEAN="$(sanitize_basic WP_SSH_PORT)"
+          REMOTE_PATH_CLEAN="$(sanitize_path WP_REMOTE_PATH)"
+
+          echo "HOST_CLEAN=$HOST_CLEAN" >> "$GITHUB_ENV"
+          echo "USER_CLEAN=$USER_CLEAN" >> "$GITHUB_ENV"
+          echo "PASS_CLEAN=$PASS_CLEAN" >> "$GITHUB_ENV"
+          echo "PORT_CLEAN=$PORT_CLEAN" >> "$GITHUB_ENV"
+          echo "REMOTE_PATH_CLEAN=$REMOTE_PATH_CLEAN" >> "$GITHUB_ENV"
+
+          if [[ "$REMOTE_PATH_CLEAN" == */$PLUGIN_SLUG ]]; then
+            REMOTE_PLUGIN_PATH="$REMOTE_PATH_CLEAN"
+          else
+            REMOTE_PLUGIN_PATH="$REMOTE_PATH_CLEAN/$PLUGIN_SLUG"
+          fi
+
+          echo "REMOTE_PLUGIN_PATH=$REMOTE_PLUGIN_PATH" >> "$GITHUB_ENV"
+          echo "RSYNC_SOURCE_DIR=wordpress-plugin/$PLUGIN_SLUG/" >> "$GITHUB_ENV"
 
       - name: Prepare remote directory
         run: |
-          test -n "$REMOTE_PATH_CLEAN" || (echo "REMOTE_PATH_CLEAN is empty" && exit 1)
+          test -n "$REMOTE_PLUGIN_PATH" || (echo "REMOTE_PLUGIN_PATH is empty" && exit 1)
           sshpass -p "$PASS_CLEAN" ssh -p "$PORT_CLEAN" -o StrictHostKeyChecking=no "$USER_CLEAN@$HOST_CLEAN" "
-            mkdir -p \"$REMOTE_PATH_CLEAN\" &&
-            chmod 755 \"$REMOTE_PATH_CLEAN\"
+            mkdir -p \"$REMOTE_PLUGIN_PATH\" &&
+            chmod 755 \"$REMOTE_PLUGIN_PATH\"
           "
 
       - name: Rsync deploy
         run: |
           sshpass -p "$PASS_CLEAN" rsync -avz --delete \
             -e "ssh -p $PORT_CLEAN -o StrictHostKeyChecking=no" \
-            wordpress-plugin/ "$USER_CLEAN@$HOST_CLEAN:$REMOTE_PATH_CLEAN/"
+            "$RSYNC_SOURCE_DIR" "$USER_CLEAN@$HOST_CLEAN:$REMOTE_PLUGIN_PATH/"
 
       - name: Show remote listing
         run: |
           sshpass -p "$PASS_CLEAN" ssh -p "$PORT_CLEAN" -o StrictHostKeyChecking=no "$USER_CLEAN@$HOST_CLEAN" "
-            ls -la \"$REMOTE_PATH_CLEAN\" &&
+            ls -la \"$REMOTE_PLUGIN_PATH\" &&
             echo '== dist ==' &&
-            ls -la \"$REMOTE_PATH_CLEAN/dist\" || true &&
+            ls -la \"$REMOTE_PLUGIN_PATH/dist\" || true &&
             echo '== assets ==' &&
-            ls -la \"$REMOTE_PATH_CLEAN/dist/assets\" || true
+            ls -la \"$REMOTE_PLUGIN_PATH/dist/assets\" || true
           "
