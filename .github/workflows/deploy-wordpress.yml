@@ -12,6 +12,7 @@ jobs:
 
     env:
       NODE_VERSION: '20'
+      PLUGIN_SLUG: ai-lp-embed
 
     steps:
       - name: Checkout repository
@@ -37,9 +38,13 @@ jobs:
       - name: Assemble WordPress plugin bundle
         run: |
           rm -rf wordpress-plugin
-          mkdir -p wordpress-plugin/ai-lp-embed
-          cp -R deliverables/wp-plugin/ai-lp-embed/. wordpress-plugin/ai-lp-embed/
-          rsync -av --delete dist/ wordpress-plugin/ai-lp-embed/dist/
+          mkdir -p "wordpress-plugin/$PLUGIN_SLUG"
+          cp -R "deliverables/wp-plugin/$PLUGIN_SLUG/." "wordpress-plugin/$PLUGIN_SLUG/"
+          rsync -av --delete dist/ "wordpress-plugin/$PLUGIN_SLUG/dist/"
+          if [ ! -f "wordpress-plugin/$PLUGIN_SLUG/$PLUGIN_SLUG.php" ]; then
+            echo "Expected wordpress-plugin/$PLUGIN_SLUG/$PLUGIN_SLUG.php but it was not found" >&2
+            exit 1
+          fi
 
       - name: Install sshpass
         run: sudo apt-get update -y && sudo apt-get install -y sshpass
@@ -52,57 +57,79 @@ jobs:
           WP_REMOTE_PATH: ${{ secrets.WP_REMOTE_PATH }}
           WP_SSH_PORT: ${{ secrets.WP_SSH_PORT || '22' }}
         run: |
-          sanitize_basic() {
-            KEY="$1" python3 - <<'PY'
+          python3 - "$PLUGIN_SLUG" <<'PY'
 import os
-
-key = os.environ["KEY"]
-value = os.environ.get(key, "")
-value = value.replace("\r", "").replace("\n", "").strip()
-print(value, end="")
-PY
-          }
-
-          sanitize_path() {
-            KEY="$1" python3 - <<'PY'
-import os
+import pathlib
 import re
+import sys
 
-key = os.environ["KEY"]
-value = os.environ.get(key, "")
-value = value.replace("\r", "").replace("\n", "").strip()
-value = re.sub(r"/\s+", "/", value)
-value = re.sub(r"\s+/", "/", value)
-print(value, end="")
+
+def sanitize_basic(key: str) -> str:
+    value = os.environ.get(key, "")
+    value = value.replace("\r", "").replace("\n", "").strip()
+    return value
+
+
+def sanitize_path(key: str) -> str:
+    value = sanitize_basic(key)
+    value = re.sub(r"/\s+", "/", value)
+    value = re.sub(r"\s+/", "/", value)
+    # Collapse duplicated slashes without touching protocol prefixes
+    value = re.sub(r"/{2,}", "/", value)
+    return value
+
+
+slug = sys.argv[1]
+host = sanitize_basic("WP_HOST")
+user = sanitize_basic("WP_USER")
+password = sanitize_basic("WP_SSH_PASS")
+port = sanitize_basic("WP_SSH_PORT") or "22"
+remote_path = sanitize_path("WP_REMOTE_PATH")
+
+remote_path = remote_path.rstrip("/")
+
+if not remote_path:
+    raise SystemExit("WP_REMOTE_PATH is empty after sanitization")
+
+remote_parts = pathlib.PurePosixPath(remote_path)
+if remote_parts.name == slug:
+    plugin_path = remote_parts
+else:
+    plugin_path = remote_parts / slug
+
+plugin_path_str = str(plugin_path)
+
+env_file = pathlib.Path(os.environ["GITHUB_ENV"])
+with env_file.open("a", encoding="utf-8") as handle:
+    handle.write(f"HOST_CLEAN={host}\n")
+    handle.write(f"USER_CLEAN={user}\n")
+    handle.write(f"PASS_CLEAN={password}\n")
+    handle.write(f"PORT_CLEAN={port}\n")
+    handle.write(f"REMOTE_PATH_CLEAN={remote_path}\n")
+    handle.write(f"REMOTE_PLUGIN_PATH={plugin_path_str}\n")
+    handle.write(f"RSYNC_SOURCE_DIR=wordpress-plugin/{slug}/\n")
 PY
-          }
-
-          echo "HOST_CLEAN=$(sanitize_basic WP_HOST)" >> "$GITHUB_ENV"
-          echo "USER_CLEAN=$(sanitize_basic WP_USER)" >> "$GITHUB_ENV"
-          echo "PASS_CLEAN=$(sanitize_basic WP_SSH_PASS)" >> "$GITHUB_ENV"
-          echo "PORT_CLEAN=$(sanitize_basic WP_SSH_PORT)" >> "$GITHUB_ENV"
-          echo "REMOTE_PATH_CLEAN=$(sanitize_path WP_REMOTE_PATH)" >> "$GITHUB_ENV"
 
       - name: Prepare remote directory
         run: |
-          test -n "$REMOTE_PATH_CLEAN" || (echo "REMOTE_PATH_CLEAN is empty" && exit 1)
+          test -n "$REMOTE_PLUGIN_PATH" || (echo "REMOTE_PLUGIN_PATH is empty" && exit 1)
           sshpass -p "$PASS_CLEAN" ssh -p "$PORT_CLEAN" -o StrictHostKeyChecking=no "$USER_CLEAN@$HOST_CLEAN" "
-            mkdir -p \"$REMOTE_PATH_CLEAN\" &&
-            chmod 755 \"$REMOTE_PATH_CLEAN\"
+            mkdir -p \"$REMOTE_PLUGIN_PATH\" &&
+            chmod 755 \"$REMOTE_PLUGIN_PATH\"
           "
 
       - name: Rsync deploy
         run: |
           sshpass -p "$PASS_CLEAN" rsync -avz --delete \
             -e "ssh -p $PORT_CLEAN -o StrictHostKeyChecking=no" \
-            wordpress-plugin/ "$USER_CLEAN@$HOST_CLEAN:$REMOTE_PATH_CLEAN/"
+            "$RSYNC_SOURCE_DIR" "$USER_CLEAN@$HOST_CLEAN:$REMOTE_PLUGIN_PATH/"
 
       - name: Show remote listing
         run: |
           sshpass -p "$PASS_CLEAN" ssh -p "$PORT_CLEAN" -o StrictHostKeyChecking=no "$USER_CLEAN@$HOST_CLEAN" "
-            ls -la \"$REMOTE_PATH_CLEAN\" &&
+            ls -la \"$REMOTE_PLUGIN_PATH\" &&
             echo '== dist ==' &&
-            ls -la \"$REMOTE_PATH_CLEAN/dist\" || true &&
+            ls -la \"$REMOTE_PLUGIN_PATH/dist\" || true &&
             echo '== assets ==' &&
-            ls -la \"$REMOTE_PATH_CLEAN/dist/assets\" || true
+            ls -la \"$REMOTE_PLUGIN_PATH/dist/assets\" || true
           "
