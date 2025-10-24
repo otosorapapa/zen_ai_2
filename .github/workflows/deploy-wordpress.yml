@@ -58,7 +58,7 @@ jobs:
           }
 
           sanitize_path() {
-            KEY="$1" python3 -c "import os, re; key = os.environ['KEY']; value = os.environ.get(key, ''); value = value.replace('\\r', '').replace('\\n', '').strip(); value = re.sub(r'/\\s+', '/', value); value = re.sub(r'\\s+/', '/', value); print(value, end='')"
+            KEY="$1" python3 -c "import os, re; key = os.environ['KEY']; value = os.environ.get(key, ''); value = value.replace('\\r', '').replace('\\n', '').strip(); value = value.replace('\\\\', '/'); value = re.sub(r'/\\s+', '/', value); value = re.sub(r'\\s+/', '/', value); value = re.sub(r'/+', '/', value); print(value, end='')"
           }
 
           HOST_CLEAN="$(sanitize_basic WP_HOST)"
@@ -73,11 +73,53 @@ jobs:
           echo "PORT_CLEAN=$PORT_CLEAN" >> "$GITHUB_ENV"
           echo "REMOTE_PATH_CLEAN=$REMOTE_PATH_CLEAN" >> "$GITHUB_ENV"
 
-          if [[ "$REMOTE_PATH_CLEAN" == */$PLUGIN_SLUG ]]; then
-            REMOTE_PLUGIN_PATH="$REMOTE_PATH_CLEAN"
-          else
-            REMOTE_PLUGIN_PATH="$REMOTE_PATH_CLEAN/$PLUGIN_SLUG"
-          fi
+          REMOTE_PLUGIN_PATH=$(PLUGIN_SLUG="$PLUGIN_SLUG" python3 - <<'PY'
+import os
+
+slug = os.environ.get("PLUGIN_SLUG", "").strip()
+remote_path = os.environ.get("REMOTE_PATH_CLEAN", "")
+
+normalized = remote_path.replace("\\", "/")
+
+if ":/" not in normalized and normalized.startswith("//"):
+    normalized = "/" + normalized.lstrip("/")
+
+prefix = ""
+trimmed = normalized
+if normalized.startswith("/"):
+    prefix = "/"
+    trimmed = normalized[1:]
+elif len(normalized) >= 2 and normalized[1] == ":":
+    prefix = normalized[:2]
+    trimmed = normalized[2:]
+
+segments = [segment for segment in trimmed.split("/") if segment]
+
+if segments and segments[-1] == slug:
+    segments = segments[:-1]
+
+def ensure_plugin_base(parts):
+    if len(parts) >= 2 and parts[-2:] == ["wp-content", "plugins"]:
+        return parts
+    if parts and parts[-1] == "plugins":
+        return parts
+    if parts and parts[-1] == "wp-content":
+        return parts + ["plugins"]
+    return parts + ["wp-content", "plugins"]
+
+base_segments = ensure_plugin_base(segments)
+full_segments = base_segments + ([slug] if slug else [])
+
+result = "/".join(full_segments)
+
+if prefix == "/":
+    result = "/" + result
+elif prefix:
+    result = prefix + "/" + result
+
+print(result, end="")
+PY
+          )
 
           echo "REMOTE_PLUGIN_PATH=$REMOTE_PLUGIN_PATH" >> "$GITHUB_ENV"
           echo "RSYNC_SOURCE_DIR=wordpress-plugin/$PLUGIN_SLUG/" >> "$GITHUB_ENV"
