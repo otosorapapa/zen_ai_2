@@ -4,7 +4,14 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'deliverables/wp-plugin/ai-lp-embed/**'
+      - '.github/workflows/deploy-wordpress.yml'
   workflow_dispatch:
+
+concurrency:
+  group: wordpress-plugin-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   deploy:
